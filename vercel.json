@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "buildCommand": "pip install -r requirements.txt",
   "builds": [
     {
       "src": "api/index.py",
@@ -8,11 +9,12 @@
   ],
   "routes": [
     {
-      "handle": "filesystem"
-    },
-    {
       "src": "/api/(.*)",
       "dest": "/api/index.py"
+    },
+    {
+      "src": "/(.*\\.(?:js|css|png|jpg|svg|ico|txt|xml|json|gif|webp|html))",
+      "dest": "/$1"
     },
     {
       "src": "/(.*)",

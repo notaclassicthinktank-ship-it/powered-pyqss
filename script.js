@@ -17,9 +17,7 @@ let state = {
     yearFilter: "All",
     viewMode: "browse", // 'browse', 'saved', 'affiliates', or 'contact'
     isAdminMode: false,
-    currentUser: JSON.parse(localStorage.getItem('pyq_user')) || null,
-    affiliateData: [],
-    authMode: 'login' // 'login' or 'signup'
+    affiliateData: []
 };
 let eventListenersReady = false;
 let adminListenersReady = false;
@@ -57,24 +55,9 @@ const elements = {
     sidebar: document.querySelector('.sidebar'),
     sidebarOverlay: document.getElementById('sidebar-overlay'),
     sidebarClose: document.getElementById('sidebar-close'),
-
-    // User Auth Elements
-    userTab: document.getElementById('user-tab'),
-    userTabText: document.getElementById('user-tab-text'),
-    userAuthModal: document.getElementById('user-auth-modal'),
-    closeAuthModalBtn: document.getElementById('close-auth-modal'),
-    authToggleLogin: document.getElementById('toggle-login'),
-    authToggleSignup: document.getElementById('toggle-signup'),
-    authModalTitle: document.getElementById('auth-modal-title'),
-    userAuthForm: document.getElementById('user-auth-form'),
-    btnAuthSubmit: document.getElementById('btn-auth-submit'),
-    authError: document.getElementById('auth-error'),
-    authSuccess: document.getElementById('auth-success'),
-    authUsername: document.getElementById('auth-username'),
     toastContainer: document.getElementById('toast-container'),
     btnToggleFooter: document.getElementById('btn-toggle-footer'),
-    footerExpandContainer: document.getElementById('footer-expand-container'),
-
+    footerExpandContainer: document.getElementById('footer-expand-container')
 };
 
 // Application Data (Merge static data with backend data)
@@ -131,17 +114,6 @@ function safeImageSrc(value) {
 async function init() {
     renderSkeletons();
     
-    if (!state.currentUser) {
-        // Force login if not logged in
-        elements.userAuthModal.classList.add('active');
-        // Hide close button on login modal when forced
-        elements.closeAuthModalBtn.style.display = 'none';
-        return;
-    }
-
-    if (state.currentUser) {
-        elements.closeAuthModalBtn.style.display = 'flex'; // Restore if logged in
-    }
     try {
         // Fetch questions from our backend
         const response = await fetch(`${BASE_API_URL}/api/questions`);
@@ -565,47 +537,6 @@ function toggleSave(id) {
     const isSaved = state.savedQuestions.includes(id);
     showToast(isSaved ? "Question saved to bookmarks" : "Question removed from bookmarks", isSaved ? "success" : "info");
 
-    if (state.currentUser) {
-        syncSavedWithBackend();
-    }
-}
-
-async function syncSavedWithBackend() {
-    if (!state.currentUser) return;
-    try {
-        await fetch(`${BASE_API_URL}/api/user/saved`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                userId: state.currentUser.id,
-                savedIds: state.savedQuestions
-            })
-        });
-    } catch (err) {
-        console.warn("Failed to sync saved questions with backend.");
-    }
-}
-
-async function fetchUserSavedQuestions() {
-    if (!state.currentUser) return;
-    try {
-        const response = await fetch(`${BASE_API_URL}/api/user/saved?userId=${state.currentUser.id}`);
-        if (response.ok) {
-            const backendSaved = await response.json();
-            // Merge local and backend saved (unique set)
-            const combined = [...new Set([...state.savedQuestions, ...backendSaved])];
-            state.savedQuestions = combined;
-            localStorage.setItem('pyq_saved', JSON.stringify(combined));
-            updateSavedCount();
-            
-            // If local was different, sync back the merged version
-            if (combined.length !== backendSaved.length) {
-                syncSavedWithBackend();
-            }
-        }
-    } catch (err) {
-        console.warn("Failed to fetch saved questions from backend.");
-    }
 }
 
 function updateSavedCount() {
@@ -860,167 +791,14 @@ async function deleteQuestion(id) {
     }
 }
 
-function setupUserAuthListeners() {
-    if (!elements.userTab) return;
 
-    elements.userTab.addEventListener('click', () => {
-        if (state.currentUser) {
-            if (confirm(`Do you want to log out, ${state.currentUser.username}?`)) {
-                state.currentUser = null;
-                localStorage.removeItem('pyq_user');
-                updateUserUI();
-            }
-        } else {
-            elements.userAuthModal.classList.add('active');
-            elements.authUsername.focus();
-        }
-    });
-
-    elements.closeAuthModalBtn.addEventListener('click', () => {
-        elements.userAuthModal.classList.remove('active');
-        clearAuthForm();
-    });
-
-    elements.authToggleLogin.addEventListener('click', () => setAuthMode('login'));
-    elements.authToggleSignup.addEventListener('click', () => setAuthMode('signup'));
-
-    elements.userAuthForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const username = document.getElementById('auth-username').value.trim();
-        const password = document.getElementById('auth-password').value;
-
-        if (state.authMode === 'login') {
-            handleLogin(username, password);
-        } else {
-            handleSignup(username, password);
-        }
-    });
-}
-
-function setAuthMode(mode) {
-    state.authMode = mode;
-    if (mode === 'login') {
-        elements.authToggleLogin.classList.add('active');
-        elements.authToggleSignup.classList.remove('active');
-        elements.authModalTitle.textContent = 'User Login';
-        elements.btnAuthSubmit.textContent = 'Login';
-    } else {
-        elements.authToggleSignup.classList.add('active');
-        elements.authToggleLogin.classList.remove('active');
-        elements.authModalTitle.textContent = 'Create Account';
-        elements.btnAuthSubmit.textContent = 'Sign Up';
-    }
-    elements.authError.style.display = 'none';
-}
-
-async function handleLogin(username, password) {
-    const url = `${BASE_API_URL}/api/login`;
-    console.log("Attempting login at:", url);
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
-        });
-
-        const data = await response.json();
-        if (response.ok) {
-            state.currentUser = data.user;
-            localStorage.setItem('pyq_user', JSON.stringify(data.user));
-            elements.userAuthModal.classList.remove('active');
-            updateUserUI();
-            await fetchUserSavedQuestions();
-            clearAuthForm();
-        } else {
-            elements.authError.textContent = data.error || `Login failed (Status: ${response.status})`;
-            elements.authError.style.display = 'block';
-        }
-    } catch (err) {
-        console.error("Login Error Details:", err);
-        elements.authError.textContent = `Connection error: ${err.message || 'Server unreachable'}`;
-        elements.authError.style.display = 'block';
-    }
-}
-
-async function handleSignup(username, password) {
-    const url = `${BASE_API_URL}/api/register`;
-    console.log("Attempting signup at:", url);
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
-        });
-
-        const data = await response.json();
-        if (response.ok) {
-            elements.authSuccess.textContent = 'Account created! You can now login.';
-            elements.authSuccess.style.display = 'block';
-            setTimeout(() => {
-                setAuthMode('login');
-                elements.authSuccess.style.display = 'none';
-            }, 2000);
-        } else {
-            elements.authError.textContent = data.error || `Registration failed (Status: ${response.status})`;
-            elements.authError.style.display = 'block';
-        }
-    } catch (err) {
-        console.error("Signup Error Details:", err);
-        elements.authError.textContent = `Connection error: ${err.message || 'Server unreachable'}`;
-        elements.authError.style.display = 'block';
-    }
-}
-
-function updateUserUI() {
-    if (state.currentUser) {
-        elements.userTabText.textContent = state.currentUser.username;
-        elements.userTab.style.borderColor = 'var(--success)';
-        elements.userTab.style.color = 'var(--success)';
-        elements.userTab.style.background = 'rgba(16, 185, 129, 0.1)';
-    } else {
-        elements.userTabText.textContent = 'User Login';
-        elements.userTab.style.borderColor = 'rgba(139, 92, 246, 0.2)';
-        elements.userTab.style.color = '#a78bfa';
-        elements.userTab.style.background = 'rgba(139, 92, 246, 0.1)';
-    }
-}
-
-function updateUserUI() {
-    if (!elements.userTabText) return;
-    if (state.currentUser) {
-        elements.userTabText.textContent = state.currentUser.username;
-        elements.userTab.classList.add('active');
-        elements.userTab.style.background = 'rgba(99, 102, 241, 0.1)';
-        elements.userTab.style.color = 'var(--primary)';
-        elements.userTab.style.borderColor = 'var(--primary)';
-    } else {
-        elements.userTabText.textContent = 'User Login';
-        elements.userTab.classList.remove('active');
-        elements.userTab.style.background = '';
-        elements.userTab.style.color = '';
-        elements.userTab.style.borderColor = '';
-    }
-}
-
-function clearAuthForm() {
-    elements.userAuthForm.reset();
-    elements.authError.style.display = 'none';
-    elements.authSuccess.style.display = 'none';
-}
 
 // Start
 document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
     setupAdminListeners();
     setupSidebarToggle();
-    setupUserAuthListeners();
     updateSavedCount();
-    
-    // Initial UI state
-    if (state.currentUser) {
-        updateUserUI();
-        await fetchUserSavedQuestions();
-    }
     
     renderChapters();
     renderQuestions();
