@@ -100,11 +100,11 @@ def init_db():
                 image TEXT
             )
         ''')
-
-        return jsonify({"error": str(e)}), e.code
-    # Handle non-HTTP errors
-    print(f"Unhandled Backend Error: {e}")
-    return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
+        conn.commit()
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+    finally:
+        conn.close()
 
 
 @app.route('/')
@@ -210,6 +210,11 @@ def delete_affiliate(affiliate_id):
 
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
+
+
+# Initialize database on app startup
+init_db()
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
